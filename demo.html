@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+
+<body>
+    <div class="container">
+        <div>
+            <input type="text" name="name" />
+        </div>
+        <div>
+            <input type="text" name="phone" />
+        </div>
+
+
+    </div>
+    <script src="./js/jquery-1.8.0.js"></script>
+    <script src="./js/ux.js"></script>
+
+    <script>
+        var formGroup = new ux.form.FormGroup($('.container'), {
+            'name': {
+                rules: {
+                    required: true,
+                    maxLength: 20
+                },
+                patterns: {
+                    maxLength: 20
+                }
+            },
+            'phone': {
+                rules: {
+                    required: true,
+                    phone: true
+                },
+                patterns: {
+                    phone: true
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
