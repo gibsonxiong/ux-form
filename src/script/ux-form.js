@@ -1,5 +1,28 @@
-//form
-(function ($) {
+/*
+ * class FormControl{
+ *      getValue()
+ *      check()
+ * }
+ * 
+ * FormControlParam {
+ *      rules,
+ *      messages,
+ *      
+ * }
+ * 
+ * FormArrayParam {
+ *      
+ * }
+ * 
+ */
+(function (global, factory) {
+    if (typeof module !== 'undefined' && typeof exports === 'object') {
+        var $ = require('jquery');
+        module.exports = factory($);
+    } else {
+        global.uxForm = factory(global.$);
+    }
+})(this, function ($) {
     var uxUtils = {
         format: function (str, obj) {
             var result = str;
@@ -36,9 +59,19 @@
             }
             return res;
         },
-        each: function (arr, func) {
-            if (!arr) return;
-            $.each(arr, func);
+        each: function (arr, callback) {
+            if(!arr) return;
+            if (typeof arr.length === 'number') {
+                [].every.call(arr, function (item, idx) {
+                    return callback.call(item, idx, item) !== false;
+                });
+            } else {
+                for (var key in arr) {
+                    if (arr.hasOwnProperty(key)) {
+                        if (callback.call(arr[key], key, arr[key]) === false) return;
+                    }
+                }
+            }
         },
         array_add: function (arr, val) {
             if ($.isArray(val)) {
@@ -46,6 +79,14 @@
             } else {
                 arr.push(val);
             }
+        },
+        isNull: function (o) {
+            return o === null || o === undefined;
+        },
+        trim: function (str) {
+            if (uxUtils.isNull(str)) return '';
+
+            return str.replace(/^\s*|\s*$/g, '');
         }
     };
 
@@ -65,8 +106,6 @@
     };
 
     var Validator = (function () {
-
-        // raw valid invalid pending
 
         function Validator() {
         }
@@ -370,7 +409,7 @@
         return Pattern;
 
     })();
-    
+
     var ErrorMsg = (function () {
 
         function ErrorMsg() {
@@ -411,9 +450,9 @@
                 var result = formCheckResult.result;
                 var showed = false;
 
-                $.each(result, function (i, item) {
+                uxUtils.each(result, function (i, item) {
 
-                    $.each(item.errorMsgs, function (i, errorMsg) {
+                    uxUtils.each(item.errorMsgs, function (i, errorMsg) {
                         if (errorMsg) {
                             alert(errorMsg);
                             showed = true;
@@ -436,27 +475,28 @@
 
         // raw valid invalid pending
 
-        function FormControl(controlName, inputElem, options) {
+        function FormControl(controlName, inputElem, params) {
             var that = this;
             this.status = 'raw';
             this.obs = $({});
-            this.options = options;
+            this.params = params;
             this.controlName = controlName;
             this.inputElem = inputElem;
-            this.label = options.label || '';
-            this.errorMsgs = options.errorMsgs || {};
-            this.rules = options.rules || {};
-            this.setInitValue(options.initValue);
+            this.label = params.label;
+            this.errorMsgs = params.errorMsgs || {};
+            this.rules = params.rules || {};
             this.validators = {};
+            this.setInitValue(params.initValue);
 
-            this._cur();
+            this._init();
         }
 
-        FormControl.prototype._cur = function () {
+        FormControl.prototype._init = function () {
             var that = this;
+
             //遍历每个验证器
-            Object.keys(this.rules).forEach(function (validatorName) {
-                var args = that.rules[validatorName];
+            uxUtils.each(this.rules, function (validatorName, args) {
+
                 //如果参数不是数组
                 if (!$.isArray(args)) {
                     args = [args];
@@ -482,7 +522,7 @@
                 if (Object.keys(checkObj).length !== 0) invalid = true;
 
                 that._updateClassName(invalid);
-             
+
                 var eventData = {
                     checkObj: checkObj,
                     invalid: invalid,
@@ -506,7 +546,7 @@
             }
 
             //遍历每个验证器
-            this.forEach(function (validator, validatorName) {
+            this.forEachValidator(function (validator, validatorName) {
 
                 //如果不是异步
                 if (!Validator.isAsync(validatorName)) {
@@ -521,10 +561,7 @@
                     //验证器返回值为true或 对象时，则判断为验证失败
                     if (res) {
                         //错误信息
-                        var errorMsg = that.errorMsgs[validatorName];		//自定义错误信息
-                        if (!errorMsg) {
-                            errorMsg = Validator.getErrorMsg(validatorName);
-                        }
+                        var errorMsg = that.errorMsgs[validatorName] || Validator.getErrorMsg(validatorName);	//错误信息
                         var args = res === true ? {} : Object.create(res);
                         args.label = that.label || that.controlName;
                         errorMsg = uxUtils.format(errorMsg, args);
@@ -546,7 +583,7 @@
         };
 
 
-        FormControl.prototype._updateClassName = function(invalid){
+        FormControl.prototype._updateClassName = function (invalid) {
             if (invalid) {
                 this.changeStatus('invalid');
                 this.inputElem.addClass(invalidClass).removeClass(validClass);
@@ -556,12 +593,11 @@
             }
         };
 
-        FormControl.prototype.forEach = function (fn) {
+        FormControl.prototype.forEachValidator = function (callback) {
             var that = this;
 
-            Object.keys(that.validators).forEach(function (validatorName) {
-                var validator = that.validators[validatorName];
-                fn.call(that, validator, validatorName);
+            uxUtils.each(that.validators, function (validatorName, validator) {
+                callback.call(that, validator, validatorName);
             });
         };
 
@@ -577,7 +613,7 @@
         };
 
         //静态方法
-        FormControl.create = function (controlName, container, options) {
+        FormControl.create = function (controlName, container, params) {
             var inputElem = container.find('[name="' + controlName + '"]');
             var tagName = inputElem[0].tagName.toLowerCase();
             var type = inputElem.attr('type');
@@ -585,18 +621,18 @@
 
             if (tagName === 'input') {
                 if (type === 'checkbox' || type === 'radio') {
-                    return new CheckableFormControl(controlName, inputElem, options);
+                    return new CheckableFormControl(controlName, inputElem, params);
                 } else {
-                    return new TextFormControl(controlName, inputElem, options);
+                    return new TextFormControl(controlName, inputElem, params);
                 }
             }
 
             if (tagName === 'textarea') {
-                return new TextFormControl(controlName, inputElem, options);
+                return new TextFormControl(controlName, inputElem, params);
             }
 
             if (tagName === 'select') {
-                return new SelectFormControl(controlName, inputElem, options);
+                return new SelectFormControl(controlName, inputElem, params);
             }
         };
 
@@ -606,8 +642,8 @@
 
     //文本框(input textarea)
     var TextFormControl = (function (FormControl) {
-        function TextFormControl(controlName, inputElem, options) {
-            FormControl.call(this, controlName, inputElem, options);
+        function TextFormControl(controlName, inputElem, params) {
+            FormControl.call(this, controlName, inputElem, params);
 
             var that = this;
 
@@ -632,7 +668,7 @@
         };
 
         TextFormControl.prototype.restrictInput = function () {
-            var patterns = this.options.patterns;
+            var patterns = this.params.patterns;
             var inputElem = this.inputElem;
             uxUtils.each(patterns, function (patternName, patternArgs) {
 
@@ -643,7 +679,6 @@
 
                 if (!pattern) return console.error('not find pattern:' + patternName);
 
-                //
                 pattern(inputElem);
             });
         };
@@ -654,8 +689,8 @@
 
     //选择框(checkbox, radio)
     var CheckableFormControl = (function (FormControl) {
-        function CheckableFormControl(controlName, inputElem, options) {
-            FormControl.call(this, controlName, inputElem, options);
+        function CheckableFormControl(controlName, inputElem, params) {
+            FormControl.call(this, controlName, inputElem, params);
             var that = this;
 
             this.inputElem.on('click', function () {
@@ -681,8 +716,8 @@
 
     //select
     var SelectFormControl = (function (FormControl) {
-        function SelectFormControl(controlName, inputElem, options) {
-            FormControl.call(this, controlName, inputElem, options);
+        function SelectFormControl(controlName, inputElem, params) {
+            FormControl.call(this, controlName, inputElem, params);
             var that = this;
 
             this.inputElem.on('change', function () {
@@ -702,77 +737,43 @@
         return SelectFormControl;
     })(FormControl);
 
-
-    //
-
     var FormGroup = (function () {
 
-        function FormGroup(container, groupConfigs, options) {
+        function FormGroup(container, groupParams, options) {
             var that = this;
-            this.groupConfigs = groupConfigs || {};
+            this.groupParams = groupParams || {};
             this.options = options || {};
             this.obs = $({});
             this.container = container;
-            this.controls = {};
-            this._cur();
+            this.childrens = {};
+            this._init();
 
         }
 
-        FormGroup.prototype._cur = function () {
+        FormGroup.prototype._init = function () {
             var that = this;
-            var controlNames = this.capture();
-
-            $.each(controlNames, function (i, controlName) {
-                var controlConfigs = that.groupConfigs[controlName] || {};
-
-                //生成control实例
-                that.controls[controlName] = FormControl.create(controlName, that.container, controlConfigs);
-                that.controls[controlName].obs.on('onCheck', function (e, data) {
-
-                    var eventData = {};
-                    eventData.errorMsgs = [];
-                    eventData.result = [];
-                    eventData.invalid = data.invalid;
-                    eventData.result.push({
-                        name: controlName,
-                        input: data.input,
-                        result: data.result,
-                        errorMsgs: data.errorMsgs
-                    });
-
-                    //formGroup errorMsg列表
-                    uxUtils.array_add(eventData.errorMsgs, data.errorMsgs);
-
-                    that.displayErrorMsg(eventData);
-                    that.obs.trigger('onCheck', eventData);
-                });
-            });
-        };
-
-        FormGroup.prototype.capture = function () {
             var controlNames = this.container.find('[name]')
                 .filter(function () {
-                    return !!$.trim(this.name);
+                    return !!uxUtils.trim(this.name);
                 }).map(function () {
                     return this.name;
                 });
 
-            return uxUtils.array_uniqueitem(controlNames);
+            controlNames = uxUtils.array_uniqueitem(controlNames);
 
-        };
+            uxUtils.each(controlNames, function (i, controlName) {
+                var controlParams = that.groupParams[controlName] || {};
 
-        FormGroup.prototype.check = function (callback, silent) {
-            var that = this;
-            var count = Object.keys(this.controls).length;
-            var eventData = {};
-            eventData.errorMsgs = [];
-            eventData.result = [];
-            eventData.invalid = false;
+                //生成control实例
+                that.childrens[controlName] = FormControl.create(controlName, that.container, controlParams);
+                that.childrens[controlName].obs.on('onCheck', function (e, data) {
 
-            this.forEach(function (control, controlName) {
-                //验证
-                control.check(function (data) {
-                    eventData.result.push({
+                    var checkResult = {};
+                    checkResult.errorMsgs = [];
+                    checkResult.result = [];
+                    checkResult.invalid = data.invalid;
+
+                    checkResult.result.push({
                         name: controlName,
                         input: data.input,
                         result: data.result,
@@ -780,18 +781,86 @@
                     });
 
                     //formGroup errorMsg列表
-                    uxUtils.array_add(eventData.errorMsgs, data.errorMsgs);
-                    eventData.invalid = eventData.invalid || data.invalid;
+                    uxUtils.array_add(checkResult.errorMsgs, data.errorMsgs);
+
+                    that.displayErrorMsg(checkResult);
+                    that.obs.trigger('onCheck', checkResult);
+                });
+            });
+
+            var that = this;
+            var childrens = this._findChildren();
+
+            childrens.forEach(function(children){
+                that.childrens[children.name]
+            });
+        };
+
+        FormGroup.prototype._findChildren = function(){
+            var childrens = [];
+
+            function find(elem){
+                var childrens = elem.children();
+
+                childrens.each(function(){
+                    var children = $(this);
+                    var type;
+
+                    if(children.is('[formGroup]')){
+                        type = 'group';
+                    }else if(children.is('[formArray]')){
+                        type = 'array';
+                    }else if(children.is('[name]')){
+                        type = 'control';
+                    }
+
+                    if(type){
+                        childrens.push({
+                            type:type,
+                            elem: children
+                        });
+                    }else{
+                        find(children);
+                    }
+                });
+            }
+
+            find(this.container);
+            
+            return childrens;
+        };
+
+        FormGroup.prototype.check = function (callback, silent) {
+            var that = this;
+            var count = Object.keys(this.childrens).length;
+            var checkResult = {};
+            checkResult.errorMsgs = [];
+            checkResult.result = [];
+            checkResult.invalid = false;
+
+            this.forEach(function (name, children) {
+                //验证
+                children.check(function (data) {
+                    checkResult.result.push({
+                        name: name,
+                        input: data.input,
+                        result: data.result,
+                        errorMsgs: data.errorMsgs
+                    });
+
+                    //formGroup errorMsg列表
+                    uxUtils.array_add(checkResult.errorMsgs, data.errorMsgs);
+                    checkResult.invalid = checkResult.invalid || data.invalid;
 
                     count--;
                     if (count > 0) return;
                     if (callback) {
-                        callback(eventData);
+                        callback(checkResult);
                     }
 
-                    that.displayErrorMsg(eventData);
+                    that.displayErrorMsg(checkResult);
                     if (!silent) {
-                        that.obs.trigger('onCheck', eventData);
+                        that.obs.trigger('onCheck', checkResult);
                     }
 
                 }, true);
@@ -799,24 +868,22 @@
             });
         };
 
-        FormGroup.prototype.forEach = function (fn) {
+        FormGroup.prototype.forEach = function (callback) {
             var that = this;
-            var controls = this.controls;
 
-            Object.keys(controls).forEach(function (controlName) {
-                var control = controls[controlName];
-                fn.call(that, control, controlName);
+            uxUtils.each(this.childrens, function (name, children) {
+                callback.call(that, name, children);
             });
         };
 
         FormGroup.prototype.getValue = function () {
-            var ret = {};
+            var result = {};
 
-            this.forEach(function (control, controlName) {
-                ret[controlName] = control.getValue();
+            this.forEach(function (name, children) {
+                ret[name] = children.getValue();
             });
 
-            return ret;
+            return result;
         };
 
         FormGroup.prototype.displayErrorMsg = function (formCheckResult) {
@@ -826,14 +893,22 @@
             ErrorMsg.present(formCheckResult, errorMsgMode);
         };
 
+        FormGroup.options = {
+            errorMsgMode: '_default'
+        };
+
+        FormGroup.config = function (options) {
+
+        };
+
         return FormGroup;
     })();
 
     var FormComponent = (function (FormGroup) {
 
-        function FormComponent(formElem, groupConfigs, options) {
+        function FormComponent(formElem, groupParams, options) {
             var that = this;
-            FormGroup.call(that, formElem, groupConfigs, options);
+            FormGroup.call(that, formElem, groupParams, options);
 
             this.formElem = formElem;
             this.formElem.on('submit', function (e) {
@@ -856,16 +931,11 @@
         return FormComponent;
     })(FormGroup);
 
-
-    var ux = window.ux || {};
-
-    ux.form = {
-        FormComponent:FormComponent,
-        FormGroup:FormGroup,
-        FormControl:FormControl,
-        Validator:Validator,
-
+    return {
+        FormComponent: FormComponent,
+        FormGroup: FormGroup,
+        FormControl: FormControl,
+        Validator: Validator,
+        Pattern: Pattern
     };
-
-    window.ux = ux;
-})($);
+});
