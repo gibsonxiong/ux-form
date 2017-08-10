@@ -1,0 +1,10 @@
+.errorMsg{
+    font-size: 14px;
+    color:#f00;
+}
+
+.tip{
+    font-size: 12px;
+    line-height: 12px;
+    color:#999;
+}

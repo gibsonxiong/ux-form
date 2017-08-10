@@ -12,19 +12,24 @@
 <body>
     <div class="container">
         <div>
-            <input type="text" name="name" />
+            <label>姓名<input type="text" name="name" /></label>
         </div>
         <div>
-            <input type="text" name="age" />
+            <label>年龄<input type="text" name="age" /></label>
+            <p class="tip">姓名不为空的时候，必填</p>
         </div>
         <div formGroup="address">
-            <input type="text" name="province" />
-            <input type="text" name="city" />
-            <input type="text" name="district" />
+            <label>地址
+                <input type="text" name="province" />
+                <input type="text" name="city" />
+                <input type="text" name="district" />
+            </label>
         </div>
         <div formArray="phones">
-            <input type="text" name="" />
-            <input type="text" name="" />
+            <label >手机
+                <input type="text" name="" />
+                <input type="text" name="" />
+            </label>
         </div>
     </div>
     <script src="../node_modules/jquery/dist/jquery.js"></script>
@@ -47,6 +52,7 @@
                 required:function(){
                     return $('[name=name]').val() !== '';
                 },
+                depends:['name'],
                 rules: {
                     max: 100
                 }

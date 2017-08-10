@@ -420,25 +420,28 @@
         return ErrorMsg;
     })();
 
-
+    var instances = {};
 
     var FormControl = (function () {
         var validClass = 'form-valid';
         var invalidClass = 'form-invalid';
         // raw valid invalid pending
-        function FormControl(controlName, inputElem, params) {
+        function FormControl(elem, controlName, params) {
             var that = this;
             this.status = 'raw';
             this.obs = $({});
             this.params = params;
             this.controlName = controlName;
-            this.inputElem = inputElem;
+            this.elem = elem;
             this.label = params.label;
             this.errorMsgs = params.errorMsgs || {};
             this.rules = params.rules || {};
             this.validators = {};
+
             this.setInitValue(params.initValue);
             this._init();
+
+            instances[controlName] = this;
         }
 
         FormControl.prototype._init = function () {
@@ -455,6 +458,9 @@
                     that.validators[validatorName] = validator;
                 }
             });
+
+            this._initDepend();
+
         };
         FormControl.prototype.check = function (callback, silent) {
 
@@ -473,7 +479,7 @@
                 var eventData = {
                     checkObj: checkObj,
                     invalid: invalid,
-                    input: that.inputElem,
+                    input: that.elem,
                     errorMsgs: errorMsgs
                 };
                 if (callback) {
@@ -486,10 +492,7 @@
 
             that.changeStatus('pending');
 
-            var required = this.params.required;
-            if(typeof required === 'function'){
-                required = required();
-            }
+            var required = this.isRequired();
 
             if (count === 0 || !required) {
                 checkDone();
@@ -527,14 +530,46 @@
 
             
         };
+
+        FormControl.prototype.isRequired = function () {
+            var required = this.params.required;
+            if(typeof required === 'function'){
+                required = required();
+            }
+            return required;
+        };
+
+        FormControl.prototype._initDepend = function () {
+            var that = this;
+            var depends = this.params.depends || [];
+            
+            uxUtils.each(depends,function(i,name){
+                that.depend(name);
+            });
+        };
+
+        
+        FormControl.prototype.depend = function (name) {
+            var that = this;
+            var control = instances[name];
+
+            if(!control) return;
+
+            control.obs.on('onCheck',function(){
+                //未验证过，则不会做验证
+                if(that.status === 'raw') return;
+                that.check();
+            });
+        };
+
         FormControl.prototype._updateClassName = function (invalid) {
             if (invalid) {
                 this.changeStatus('invalid');
-                this.inputElem.addClass(invalidClass).removeClass(validClass);
+                this.elem.addClass(invalidClass).removeClass(validClass);
             }
             else {
                 this.changeStatus('valid');
-                this.inputElem.addClass(validClass).removeClass(invalidClass);
+                this.elem.addClass(validClass).removeClass(invalidClass);
             }
         };
         FormControl.prototype.forEachValidator = function (callback) {
@@ -552,48 +587,48 @@
         };
         //静态方法
         FormControl.create = function (controlName, container, params) {
-            var inputElem = container.find('[name="' + controlName + '"]');
-            var tagName = inputElem[0].tagName.toLowerCase();
-            var type = inputElem.attr('type');
+            var elem = container.find('[name="' + controlName + '"]');
+            var tagName = elem[0].tagName.toLowerCase();
+            var type = elem.attr('type');
             if (tagName === 'input') {
                 if (type === 'checkbox' || type === 'radio') {
-                    return new CheckableFormControl(controlName, inputElem, params);
+                    return new CheckableFormControl(elem, controlName, params);
                 }
                 else {
-                    return new TextFormControl(controlName, inputElem, params);
+                    return new TextFormControl(elem, controlName, params);
                 }
             }
             if (tagName === 'textarea') {
-                return new TextFormControl(controlName, inputElem, params);
+                return new TextFormControl(elem, controlName, params);
             }
             if (tagName === 'select') {
-                return new SelectFormControl(controlName, inputElem, params);
+                return new SelectFormControl(elem, controlName, params);
             }
         };
         return FormControl;
     })();
     //文本框(input textarea)
     var TextFormControl = (function (FormControl) {
-        function TextFormControl(controlName, inputElem, params) {
-            FormControl.call(this, controlName, inputElem, params);
+        function TextFormControl(elem, controlName, params) {
+            FormControl.call(this, elem, controlName, params);
             var that = this;
             this.restrictInput();
-            this.inputElem.on('blur', function () {
+            this.elem.on('blur', function () {
                 that.check();
             });
         }
         core.extend(TextFormControl, FormControl);
         TextFormControl.prototype.setInitValue = function (initValue) {
             if (initValue !== null && initValue !== undefined)
-                this.inputElem.val(initValue);
-            this.initValue = this.inputElem.val();
+                this.elem.val(initValue);
+            this.initValue = this.elem.val();
         };
         TextFormControl.prototype.getValue = function () {
-            return this.inputElem.val();
+            return this.elem.val();
         };
         TextFormControl.prototype.restrictInput = function () {
             var patterns = this.params.patterns;
-            var inputElem = this.inputElem;
+            var elem = this.elem;
             uxUtils.each(patterns, function (patternName, patternArgs) {
                 if (!$.isArray(patternArgs)) {
                     patternArgs = [patternArgs];
@@ -601,24 +636,24 @@
                 var pattern = Pattern.get(patternName, patternArgs);
                 if (!pattern)
                     return console.error('not find pattern:' + patternName);
-                pattern(inputElem);
+                pattern(elem);
             });
         };
         return TextFormControl;
     })(FormControl);
     //选择框(checkbox, radio)
     var CheckableFormControl = (function (FormControl) {
-        function CheckableFormControl(controlName, inputElem, params) {
-            FormControl.call(this, controlName, inputElem, params);
+        function CheckableFormControl(elem, controlName, params) {
+            FormControl.call(this, elem, controlName, params);
             var that = this;
-            this.inputElem.on('click', function () {
+            this.elem.on('click', function () {
                 that.check();
             });
         }
         core.extend(CheckableFormControl, FormControl);
         CheckableFormControl.prototype.getValue = function () {
             var ret = [];
-            this.inputElem.each(function () {
+            this.elem.each(function () {
                 if ($(this).is(':checked')) {
                     ret.push(this.value);
                 }
@@ -629,17 +664,17 @@
     })(FormControl);
     //select
     var SelectFormControl = (function (FormControl) {
-        function SelectFormControl(controlName, inputElem, params) {
-            FormControl.call(this, controlName, inputElem, params);
+        function SelectFormControl(elem, controlName, params) {
+            FormControl.call(this, elem, controlName, params);
             var that = this;
-            this.inputElem.on('change', function () {
+            this.elem.on('change', function () {
                 that.check();
             });
         }
         core.extend(SelectFormControl, FormControl);
         SelectFormControl.prototype.getValue = function () {
             var ret;
-            ret = this.inputElem.children('option:checked').val();
+            ret = this.elem.children('option:checked').val();
             return ret;
         };
         return SelectFormControl;
@@ -806,4 +841,3 @@
         Pattern: Pattern
     };
 });
-//# sourceMappingURL=ux-form.js.map
