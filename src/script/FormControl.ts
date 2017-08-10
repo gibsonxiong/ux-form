@@ -1,8 +1,16 @@
 import Validator from './Validator';
-import { format, each, isArray } from './utils';
+import { format, each, isArray, trim, array_uniqueitem, array_add } from './utils';
 import $ from 'jquery';
 
-export default class FormContrl {
+interface IFormContrl {
+    elem: any;
+
+    getValue(): any;
+
+    check(callback, silent): any;
+}
+
+export class FormContrl implements IFormContrl {
 
     status: string;
 
@@ -12,7 +20,7 @@ export default class FormContrl {
 
     controlName;
 
-    inputElem;
+    elem;
 
     label;
 
@@ -23,14 +31,14 @@ export default class FormContrl {
     validators;
 
     options;
-    
-    constructor(params, controlName, inputElem, options) {
+
+    constructor(params, controlName, elem, options) {
         var that = this;
         this.status = 'raw';
         this.obs = $({});
         this.params = params;
         this.controlName = controlName;
-        this.inputElem = inputElem;
+        this.elem = elem;
         this.label = params.label;
         this.errorMsgs = params.errorMsgs || {};
         this.rules = params.rules || {};
@@ -76,7 +84,7 @@ export default class FormContrl {
             var eventData = {
                 checkObj: checkObj,
                 invalid: invalid,
-                input: that.inputElem,
+                input: that.elem,
                 errorMsgs: errorMsgs
             };
 
@@ -136,10 +144,10 @@ export default class FormContrl {
     _updateClassName(invalid) {
         if (invalid) {
             this.changeStatus('invalid');
-            this.inputElem.addClass(this.options.invalidClass).removeClass(this.options.validClass);
+            this.elem.addClass(this.options.invalidClass).removeClass(this.options.validClass);
         } else {
             this.changeStatus('valid');
-            this.inputElem.addClass(this.options.validClass).removeClass(this.options.invalidClass);
+            this.elem.addClass(this.options.validClass).removeClass(this.options.invalidClass);
         }
     }
 
@@ -163,7 +171,7 @@ export default class FormContrl {
     }
 
     //静态方法
-    static create (controlName, container, params) {
+    static create(controlName, container, params) {
         // var inputElem = container.find('[name="' + controlName + '"]');
         // var tagName = inputElem[0].tagName.toLowerCase();
         // var type = inputElem.attr('type');
@@ -186,5 +194,191 @@ export default class FormContrl {
         // }
     }
 }
+
+export class FormArray {
+    constructor() {
+
+    }
+
+
+}
+
+export class FormGroup implements IFormContrl {
+
+    static options = {
+        errorMsgMode: '_default'
+    }
+
+    static config(options) {
+
+    }
+
+    groupParams;
+
+    options;
+
+    obs;
+
+    elem;
+
+    childrens;
+
+
+
+    constructor(elem, groupParams, options) {
+        var that = this;
+        this.groupParams = groupParams || {};
+        this.options = options || {};
+        this.obs = $({});
+        this.elem = elem;
+        this.childrens = {};
+        this._init();
+    }
+
+    _init() {
+        var that = this;
+        var controlNames = this.elem.find('[name]')
+            .filter(function () {
+                return !!trim(this.name);
+            }).map(function () {
+                return this.name;
+            });
+
+        controlNames = array_uniqueitem(controlNames);
+
+        each(controlNames, function (i, controlName) {
+            var controlParams = that.groupParams[controlName] || {};
+
+            //生成control实例
+            that.childrens[controlName] = FormControl.create(controlName, that.elem, controlParams);
+            that.childrens[controlName].obs.on('onCheck', function (e, data) {
+
+                var checkResult:any = {};
+                checkResult.errorMsgs = [];
+                checkResult.result = [];
+                checkResult.invalid = data.invalid;
+
+                checkResult.result.push({
+                    name: controlName,
+                    input: data.input,
+                    result: data.result,
+                    errorMsgs: data.errorMsgs
+                });
+
+                //formGroup errorMsg列表
+                array_add(checkResult.errorMsgs, data.errorMsgs);
+
+                that.displayErrorMsg(checkResult);
+                that.obs.trigger('onCheck', checkResult);
+            });
+        });
+
+        var that = this;
+        var childrens = this._findChildren();
+
+        childrens.forEach(function (children) {
+            that.childrens[children.name]
+        });
+    }
+
+    _findChildren() {
+        var childrens = [];
+
+        function find(elem) {
+            var childrens = elem.children();
+
+            childrens.each(function () {
+                var children = $(this);
+                var type;
+
+                if (children.is('[formGroup]')) {
+                    type = 'group';
+                } else if (children.is('[formArray]')) {
+                    type = 'array';
+                } else if (children.is('[name]')) {
+                    type = 'control';
+                }
+
+                if (type) {
+                    childrens.push({
+                        type: type,
+                        elem: children
+                    });
+                } else {
+                    find(children);
+                }
+            });
+        }
+
+        find(this.elem);
+
+        return childrens;
+    }
+
+    check(callback, silent) {
+        var that = this;
+        var count = Object.keys(this.childrens).length;
+        var checkResult:any = {};
+        checkResult.errorMsgs = [];
+        checkResult.result = [];
+        checkResult.invalid = false;
+
+        this.forEach(function (name, children) {
+            //验证
+            children.check(function (data) {
+                checkResult.result.push({
+                    name: name,
+                    input: data.input,
+                    result: data.result,
+                    errorMsgs: data.errorMsgs
+                });
+
+                //formGroup errorMsg列表
+                array_add(checkResult.errorMsgs, data.errorMsgs);
+                checkResult.invalid = checkResult.invalid || data.invalid;
+
+                count--;
+                if (count > 0) return;
+                if (callback) {
+                    callback(checkResult);
+                }
+
+                that.displayErrorMsg(checkResult);
+                if (!silent) {
+                    that.obs.trigger('onCheck', checkResult);
+                }
+
+            }, true);
+
+        });
+    }
+
+    forEach(callback) {
+        var that = this;
+
+        each(this.childrens, function (name, children) {
+            callback.call(that, name, children);
+        });
+    }
+
+    getValue() {
+        var result = {};
+
+        this.forEach(function (name, children) {
+            result[name] = children.getValue();
+        });
+
+        return result;
+    }
+
+    displayErrorMsg(formCheckResult) {
+        if (this.options.showErrorMsg === false) return;
+        var errorMsgMode = this.options.errorMsgMode || '_default';
+
+        // ErrorMsg.present(formCheckResult, errorMsgMode);
+    }
+
+}
+
 
 

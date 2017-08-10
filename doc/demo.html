@@ -27,15 +27,16 @@
             <input type="text" name="" />
         </div>
     </div>
-    <script src="./node_modules/jquery/dist/jquery.js"></script>
-    <script src="./js/ux-form.js"></script>
+    <script src="../node_modules/jquery/dist/jquery.js"></script>
+    <script src="../dist/script/ux-form.js"></script>
 
     <script>
 
         var formGroup = new uxForm.FormGroup($('.container'), {
             'name': {
+                required: true,
                 rules: {
-                    required: true,
+                    notNull:true,
                     maxLength: 20
                 },
                 patterns: {
@@ -43,8 +44,10 @@
                 }
             },
             'age': {
+                required:function(){
+                    return $('[name=name]').val() !== '';
+                },
                 rules: {
-                    required: true,
                     max: 100
                 }
             },
