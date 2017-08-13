@@ -93,7 +93,14 @@
             if (uxUtils.isNull(str))
                 return '';
             return str.replace(/^\s*|\s*$/g, '');
-        }
+        },
+
+        uuid:(function(){
+            var id = 0;
+            return function(){
+                return id++;
+            }
+        })()
     };
     var core = {
         extend: function (_class, _superclass) {
@@ -250,11 +257,7 @@
             //输入值相同
             Validator.register('equalTo', function (selector, control) {
                 var equalElem = $(selector);
-                equalElem.on('blur', function () {
-                    if (control.status == 'raw')
-                        return;
-                    control.validate();
-                });
+
                 return function (val) {
                     var equalValue = equalElem.val();
                     if (val == equalValue) {
@@ -425,23 +428,33 @@
     var FormControl = (function () {
         var validClass = 'form-valid';
         var invalidClass = 'form-invalid';
+
+        var classNames = {
+            raw:'form-raw',
+            pending:'form-pending',
+            valid:'form-valid',
+            invalid:'form-invalid'
+        };
+
         // raw valid invalid pending
-        function FormControl(elem, controlName, params) {
+        function FormControl(elem, params,options) {
             var that = this;
-            this.status = 'raw';
+            this._status = '';
             this.obs = $({});
             this.params = params;
-            this.controlName = controlName;
+            this.controlName = elem.attr('name') || '__formControlName__'+uxUtils.uuid();
             this.elem = elem;
             this.label = params.label;
             this.errorMsgs = params.errorMsgs || {};
             this.rules = params.rules || {};
             this.validators = {};
+            this.options = options || {};
 
+            this._changeStatus('raw');
             this.setInitValue(params.initValue);
             this._init();
 
-            instances[controlName] = this;
+            instances[this.controlName] = this;
         }
 
         FormControl.prototype._init = function () {
@@ -475,7 +488,7 @@
             function checkDone() {
                 if (Object.keys(checkObj).length !== 0)
                     invalid = true;
-                that._updateClassName(invalid);
+                that._changeStatus(invalid?'invalid':'valid');
                 var eventData = {
                     checkObj: checkObj,
                     invalid: invalid,
@@ -490,7 +503,7 @@
                 }
             }
 
-            that.changeStatus('pending');
+            that._changeStatus('pending');
 
             var required = this.isRequired();
 
@@ -557,60 +570,70 @@
 
             control.obs.on('onCheck',function(){
                 //未验证过，则不会做验证
-                if(that.status === 'raw') return;
+                if(that.getStatus() === 'raw') return;
                 that.check();
             });
         };
 
-        FormControl.prototype._updateClassName = function (invalid) {
-            if (invalid) {
-                this.changeStatus('invalid');
-                this.elem.addClass(invalidClass).removeClass(validClass);
-            }
-            else {
-                this.changeStatus('valid');
-                this.elem.addClass(validClass).removeClass(invalidClass);
-            }
-        };
         FormControl.prototype.forEachValidator = function (callback) {
             var that = this;
             uxUtils.each(that.validators, function (validatorName, validator) {
                 callback.call(that, validator, validatorName);
             });
         };
-        FormControl.prototype.setInitValue = function (initValue) {
+        FormControl.prototype.setInitValue = function (initValue, silent) {
         };
-        FormControl.prototype.changeStatus = function (status) {
-            this.status = status;
+        FormControl.prototype._changeStatus = function (status,silent) {
+            this._status = status;
+            this._updateClassName(status);
+
+            if(!silent) {
+                this.obs.trigger('onStatusChange');
+            }
+        };
+        FormControl.prototype.getStatus = function () {
+            return this._status;
+        };
+        FormControl.prototype._updateClassName = function (status) {
+            var that = this;
+
+            //先清除之前状态的className
+            uxUtils.each(classNames,function(key,className){
+                that.elem.removeClass(className);
+            });
+
+            //再加上当前状态的className
+            that.elem.addClass(classNames[status]);
+
         };
         FormControl.prototype.getValue = function () {
         };
         //静态方法
-        FormControl.create = function (controlName, container, params) {
-            var elem = container.find('[name="' + controlName + '"]');
+        FormControl.create = function (elem, params,options) {
             var tagName = elem[0].tagName.toLowerCase();
             var type = elem.attr('type');
             if (tagName === 'input') {
-                if (type === 'checkbox' || type === 'radio') {
-                    return new CheckableFormControl(elem, controlName, params);
-                }
-                else {
-                    return new TextFormControl(elem, controlName, params);
+                if (type === 'checkbox' ) {
+                    return new CheckboxFormControl(elem, params,options);
+                }else if(type === 'radio'){
+                    return new RadioFormControl(elem, params,options);
+                }else {
+                    return new TextFormControl(elem, params,options);
                 }
             }
             if (tagName === 'textarea') {
-                return new TextFormControl(elem, controlName, params);
+                return new TextFormControl(elem, params,options);
             }
             if (tagName === 'select') {
-                return new SelectFormControl(elem, controlName, params);
+                return new SelectFormControl(elem, params,options);
             }
         };
         return FormControl;
     })();
     //文本框(input textarea)
     var TextFormControl = (function (FormControl) {
-        function TextFormControl(elem, controlName, params) {
-            FormControl.call(this, elem, controlName, params);
+        function TextFormControl(elem, params,options) {
+            FormControl.call(this, elem, params, options);
             var that = this;
             this.restrictInput();
             this.elem.on('blur', function () {
@@ -641,10 +664,10 @@
         };
         return TextFormControl;
     })(FormControl);
-    //选择框(checkbox, radio)
+
     var CheckableFormControl = (function (FormControl) {
-        function CheckableFormControl(elem, controlName, params) {
-            FormControl.call(this, elem, controlName, params);
+        function CheckableFormControl(elem, params,options) {
+            FormControl.call(this, elem, params,options);
             var that = this;
             this.elem.on('click', function () {
                 that.check();
@@ -662,10 +685,35 @@
         };
         return CheckableFormControl;
     })(FormControl);
+
+    //checkbox
+    var CheckboxFormControl = (function (CheckableFormControl) {
+        function CheckboxFormControl(elem, params,options) {
+            CheckableFormControl.call(this, elem, params,options);
+        }
+        core.extend(CheckboxFormControl, CheckableFormControl);
+        return CheckboxFormControl;
+    })(CheckableFormControl);
+
+    //radio
+    var RadioFormControl = (function (CheckableFormControl) {
+        function RadioFormControl(elem, params,options) {
+            CheckableFormControl.call(this, elem, params,options);
+        }
+        core.extend(RadioFormControl, CheckableFormControl);
+
+        RadioFormControl.prototype.getValue = function () {
+            var val =  CheckableFormControl.prototype.getValue();
+
+            return val[0] || '';
+        };
+        return RadioFormControl;
+    })(CheckableFormControl);
+
     //select
     var SelectFormControl = (function (FormControl) {
-        function SelectFormControl(elem, controlName, params) {
-            FormControl.call(this, elem, controlName, params);
+        function SelectFormControl(elem, params,options) {
+            FormControl.call(this, elem, params,options);
             var that = this;
             this.elem.on('change', function () {
                 that.check();
@@ -700,8 +748,9 @@
             controlNames = uxUtils.array_uniqueitem(controlNames);
             uxUtils.each(controlNames, function (i, controlName) {
                 var controlParams = that.groupParams[controlName] || {};
+                var elem = that.container.find('name='+ controlName);
                 //生成control实例
-                that.childrens[controlName] = FormControl.create(controlName, that.container, controlParams);
+                that.childrens[controlName] = FormControl.create(elem, controlParams,{});
                 that.childrens[controlName].obs.on('onCheck', function (e, data) {
                     var checkResult = {};
                     checkResult.errorMsgs = [];
