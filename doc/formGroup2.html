@@ -11,78 +11,92 @@
 
 <body>
     <div class="container">
-        <div>
-            <label>姓名<input type="text" name="name" /></label>
-        </div>
-        <div>
-            <label>年龄<input type="text" name="age" /></label>
-            <p class="tip">姓名不为空的时候，必填</p>
-        </div>
-        <div formGroupName="address">
-            <label>地址
-                <input type="text" name="province" />
-                <input type="text" name="city" />
-                <input type="text" name="district" />
-            </label>
-        </div>
-        <div formArrayName="phones">
-            <label >手机
-                <div formGroupName="contactPhone">
-                    <input type="text" name="prefix" />-
-                    <input type="text" name="phone" />
-                </div>
-                <div formGroupName="contactPhone">
-                    <input type="text" name="prefix" />-
-                    <input type="text" name="phone" />
-                </div>
-            </label>
-        </div>
+        <form id="form">
+            <div>
+                <label>姓名<input type="text" name="name" /></label>
+            </div>
+            <div>
+                <label>年龄<input type="text" name="age" /></label>
+                <p class="tip">姓名不为空的时候，必填</p>
+            </div>
+            <div formGroupName="address">
+                <label>地址
+                    <input type="text" name="province" />
+                    <input type="text" name="city" />
+                    <input type="text" name="district" />
+                </label>
+            </div>
+            <div formArrayName="phones">
+                <label>手机
+                    <div formGroupName="contactPhone">
+                        <input type="text" name="prefix" />-
+                        <input type="text" name="phone" />
+                    </div>
+                    <div formGroupName="contactPhone">
+                        <input type="text" name="prefix" />-
+                        <input type="text" name="phone" />
+                    </div>
+                </label>
+            </div>
+            <button>提交</button>
+        </form>
     </div>
     <script src="../node_modules/jquery/dist/jquery.js"></script>
     <script src="../dist/script/ux-form.js"></script>
 
     <script>
-
-        var formGroup = new uxForm.FormGroup($('.container'), {
-            'name': {
-                required: true,
-                rules: {
-                    notNull:true,
-                    maxLength: 20
-                },
-                patterns: {
-                    maxLength: 20
-                }
+        var nameControl = uxForm.FormControl.create($('[name=name]'), {
+            required: true,
+            rules: {
+                maxLength: 20
             },
-            'age': {
-                required:function(){
-                    return $('[name=name]').val() !== '';
-                },
-                depends:['name'],
-                rules: {
-                    max: 100
-                }
-            },
-            'address':{
-                province:{
-
-                },
-                city:{
-
-                },
-                district:{
-
-                }
-            },
-            'phones':{
-                rules: {
-                    required: false,
-                    phone: null
-                }
+            patterns: {
+                maxLength: 20
             }
         });
+        var ageControl = uxForm.FormControl.create($('[name=age]'), {
+            required: function () {
+                return $('[name=name]').val() !== '';
+            },
+            depends: ['name'],
+            rules: {
+                max: 100
+            }
+        });
+        var form = new uxForm.FormComponent($('.container'), {
+            'name': nameControl,
+            'age': ageControl,
+            'address': {
+                province: {
 
-debugger;
+                },
+                city: {
+
+                },
+                district: {
+
+                }
+            },
+            'phones': {
+                'prefix': {
+                    required: false,
+                    rules: {
+                        minLength: 3
+                    },
+                },
+                'phone': {
+                    required: true,
+                    rules: {
+                        phone: true
+                    }
+                }
+            }
+
+        });
+
+        form.obs.on('onSubmit', function (e, customData) {
+
+        });
     </script>
 </body>
 

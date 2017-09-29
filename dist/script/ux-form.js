@@ -22,7 +22,7 @@
  *      validateResult:{[validatorName:string]:boolean|object};
  *  }
  *
- * CheckResultDetail {
+ * CheckResult {
  *      invalid:boolean;
  *      details:array<CheckResultDetail>
  * }
@@ -126,6 +126,8 @@
     var regExps = {
         phone: /^1[34578]\d{9}$/
     };
+
+
     var Validator = (function () {
         function Validator() {
         }
@@ -411,9 +413,9 @@
                     var html = '';
 
                     uxUtils.each(detail.errorMsgs, function (i, errorMsg) {
-                        html += '<p class="errorMsg js-errorMsg-'+ detail.input.attr('name') +'">' + errorMsg + '</p>';
+                        html += '<p class="errorMsg js-errorMsg-' + detail.input.attr('name') + '">' + errorMsg + '</p>';
                     });
-                    container.children('.js-errorMsg-'+ detail.input.attr('name')).remove();
+                    container.children('.js-errorMsg-' + detail.input.attr('name')).remove();
                     container.append(html);
                 });
             });
@@ -452,8 +454,8 @@
         };
 
         var defaults = {
-            showErrorMsg:true,
-            showErrorMsgMode:0,
+            showErrorMsg: true,
+            showErrorMsgMode: '_default',
         };
 
         // raw valid invalid pending
@@ -467,18 +469,22 @@
             this.label = params.label;
             this.errorMsgs = params.errorMsgs || {};
             this.rules = params.rules || {};
-            this.options = options || {};
-            this.validators = {};
-            
+            this.options = $.extend({}, defaults, options);
+            this.validators = null;
+
+            this._initValidators();
+            this._initDepend();
             this._changeStatus('raw');
             this.setInitValue(params.initValue);
-            this._init();
+            
 
             instances[this.controlName] = this;
         }
 
-        FormControl.prototype._init = function () {
+        FormControl.prototype._initValidators = function () {
             var that = this;
+            that.validators = {};
+
             //遍历每个验证器
             uxUtils.each(this.rules, function (validatorName, args) {
                 //如果参数不是数组
@@ -487,57 +493,7 @@
                 }
                 args.push(that);
                 var validator = Validator.get(validatorName, args);
-                if (validator) {
-                    that.validators[validatorName] = validator;
-                }
-            });
 
-            this._initDepend();
-
-        };
-        FormControl.prototype.check = function (callback, silent) {
-
-            var that = this;
-            var value = this.getValue();
-            var validators = this.validators;
-            var count = Object.keys(validators).length;
-            var validateResult = {};
-            var errorMsgs = [];
-            var invalid = false;
-
-            function checkDone() {
-
-                that._changeStatus(invalid ? 'invalid' : 'valid');
-
-                var checkResultDetail = {
-                    validateResult: validateResult,
-                    invalid: invalid,
-                    input: that.elem,
-                    errorMsgs: errorMsgs
-                };
-                var checkResult = {
-                    details: [checkResultDetail],
-                    invalid: invalid
-                };
-
-                if (callback) {
-                    callback(checkResult);
-                }
-                if (!silent) {
-                    that.obs.trigger('onCheck', checkResult);
-                }
-            }
-
-            that._changeStatus('pending');
-
-            var required = this.isRequired();
-
-            if (count === 0 || !required) {
-                checkDone();
-                return;
-            }
-            //遍历每个验证器
-            this.forEachValidator(function (validator, validatorName) {
                 //如果不是异步,包装成回调形式
                 if (!Validator.isAsync(validatorName)) {
                     var oldValidator = validator;
@@ -546,6 +502,34 @@
                         cb(result);
                     };
                 }
+
+                if (validator) {
+                    that.validators[validatorName] = validator;
+                }
+
+            });
+
+        };
+        FormControl.prototype.check = function (callback, silent) {
+            var that = this;
+            var value = this.getValue();
+            var validators = this.validators;
+            var count = Object.keys(validators).length;
+            var validateResult = {};
+            var errorMsgs = [];
+            var invalid = false;
+            var needToCheck = this.isNeedToCheck();
+            
+            that._changeStatus('pending');
+
+            if (count === 0 || !needToCheck) {
+                checkDone();
+                return;
+            }
+
+            //遍历每个验证器
+            this.forEachValidator(function (validator, validatorName) {
+                //验证
                 validator(value, function (result) {
                     //验证器返回值为true或 对象时，则判断为验证失败
                     if (result) {
@@ -572,15 +556,37 @@
                 });
             });
 
+            function checkDone() {
+                
+                that._changeStatus(invalid ? 'invalid' : 'valid');
+
+                var checkResultDetail = {
+                    validateResult: validateResult,
+                    invalid: invalid,
+                    input: that.elem,
+                    errorMsgs: errorMsgs
+                };
+                var checkResult = {
+                    details: [checkResultDetail],
+                    invalid: invalid
+                };
+
+                if (callback) {
+                    callback(checkResult);
+                }
+                if (!silent) {
+                    that.obs.trigger('onCheck', checkResult);
+                }
+            }
 
         };
 
-        FormControl.prototype.isRequired = function () {
+        FormControl.prototype.isNeedToCheck = function () {
             var required = this.params.required;
             if (typeof required === 'function') {
                 required = required();
             }
-            return required;
+            return required === true || ( required === false && this.getValue() !== '');
         };
 
         FormControl.prototype._initDepend = function () {
@@ -761,10 +767,15 @@
 
 
     var FormGroup = (function () {
+        var defaults = {
+            showErrorMsg: true,
+            showErrorMsgMode: '_default',
+        };
+
         function FormGroup(elem, params, options) {
             var that = this;
             this.params = params || {};
-            this.options = options || {};
+            this.options = $.extend({}, defaults, options);
             this.obs = $({});
             this.elem = elem;
             this.childrens = {};
@@ -789,15 +800,15 @@
 
                     if (children.is('[formGroupName]')) {
                         name = children.attr('formGroupName');
-                        child = that.params[name] instanceof FormGroup ? that.params[name] :  new FormGroup(children, that.params[name], that.options);
+                        child = that.params[name] instanceof FormGroup ? that.params[name] : new FormGroup(children, that.params[name], that.options);
                     }
                     else if (children.is('[formArrayName]')) {
                         name = children.attr('formArrayName');
-                        child = that.params[name] instanceof FormArray ? that.params[name] :  new FormArray(children, that.params[name], that.options);
+                        child = that.params[name] instanceof FormArray ? that.params[name] : new FormArray(children, that.params[name], that.options);
                     }
                     else if (children.is('[name]')) {
                         name = children.attr('name');
-                        child = that.params[name] instanceof FormControl ? that.params[name] :  FormControl.create(children, that.params[name], {});
+                        child = that.params[name] instanceof FormControl ? that.params[name] : FormControl.create(children, that.params[name], {});
                     }
 
                     if (child) {
@@ -814,7 +825,7 @@
             }
             find(this.elem);
         };
-        
+
         FormGroup.prototype.check = function (callback, silent) {
             var that = this;
             var count = this.getChildrenCount();
@@ -872,7 +883,7 @@
         FormGroup.prototype.getChildrenCount = function () {
             return Object.keys(this.childrens).length;
         };
-        
+
         FormGroup.prototype.getValue = function () {
             var result = {};
             this.forEach(function (name, children) {
@@ -895,10 +906,15 @@
     })();
 
     var FormArray = (function () {
+        var defaults = {
+            showErrorMsg: true,
+            showErrorMsgMode: '_default',
+        };
+
         function FormArray(elem, params, options) {
             var that = this;
             this.params = params || {};
-            this.options = options || {};
+            this.options = $.extend({}, defaults, options);
             this.obs = $({});
             this.elem = elem;
             this.childrens = [];
